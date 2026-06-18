@@ -1418,8 +1418,18 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
    to the owner. Visitors never see any of this.
 ════════════════════════════════════════ */
 (function() {
-  const TG_TOKEN = '7811789994:AAFNYKYuyZbrnAP6DYRn0ly9IBDOK_EE0R4';
-  const TG_CHAT  = '5499745901';
+  const TG_TOKEN  = '7811789994:AAFNYKYuyZbrnAP6DYRn0ly9IBDOK_EE0R4';
+  const TG_CHAT   = '5499745901';
+  const PAGE_LABEL = 'Product & Agile PM'; // injected per file
+
+  // ── BOT / CRAWLER FILTER ─────────────────────────────
+  const ua = navigator.userAgent || '';
+  const botPattern = /bot|crawl|spider|slurp|mediapartners|facebookexternalhit|linkedinbot|twitterbot|whatsapp|telegram|discordbot|applebot|bingpreview|googleimages|headless|phantomjs|prerender|selenium|puppeteer|playwright/i;
+  if (botPattern.test(ua) || !navigator.language) return; // silent exit for bots
+
+  // ── DEDUP: skip if same session already fired a page-view ──
+  const SESSION_KEY = 'tg_pv_fired';
+  const alreadyFired = sessionStorage.getItem(SESSION_KEY);
 
   function tgSend(msg) {
     fetch('https://api.telegram.org/bot' + TG_TOKEN + '/sendMessage', {
@@ -1430,7 +1440,6 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
   }
 
   function getInfo() {
-    const ua = navigator.userAgent || '';
     let device = '🖥 Desktop';
     if (/Mobi|Android|iPhone|iPad/i.test(ua)) device = '📱 Mobile';
     else if (/Tablet|iPad/i.test(ua)) device = '📟 Tablet';
@@ -1446,16 +1455,17 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
     const tz   = Intl.DateTimeFormat().resolvedOptions().timeZone || '?';
     const ref  = document.referrer || 'Direct / Unknown';
 
-    const params     = new URLSearchParams(window.location.search);
-    const utmSource  = params.get('utm_source')   || params.get('ref') || null;
-    const utmMedium  = params.get('utm_medium')   || null;
-    const utmCampaign= params.get('utm_campaign') || null;
+    const params      = new URLSearchParams(window.location.search);
+    const utmSource   = params.get('utm_source')   || params.get('ref') || null;
+    const utmMedium   = params.get('utm_medium')   || null;
+    const utmCampaign = params.get('utm_campaign') || null;
 
     let refLine = '🔗 <b>Came from:</b> ' + ref;
     if (utmSource) {
-      refLine += '\n📌 <b>Link param:</b> ' + utmSource;
-      if (utmMedium)    refLine += ' / ' + utmMedium;
-      if (utmCampaign)  refLine += ' / ' + utmCampaign;
+      refLine += '
+📌 <b>Link param:</b> ' + utmSource;
+      if (utmMedium)   refLine += ' / ' + utmMedium;
+      if (utmCampaign) refLine += ' / ' + utmCampaign;
     }
 
     const now = new Date().toLocaleString('en-GB', { timeZone: tz, hour12: false });
@@ -1466,9 +1476,16 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
     try {
       const r = await fetch('https://ipapi.co/json/');
       const d = await r.json();
+      // If ISP looks like a cloud/hosting provider → likely a bot, suppress
+      const isp = (d.org || '').toLowerCase();
+      if (/amazon|google|microsoft|cloudflare|digitalocean|linode|ovh|hetzner|vultr|fastly|akamai|cdn|hosting|server|datacenter/.test(isp)) {
+        return null; // signal to skip sending
+      }
       return '📍 ' + (d.city || '?') + ', ' + (d.region || '') + ', ' + (d.country_name || '?') +
-             '\n🌐 IP: ' + (d.ip || '?') +
-             (d.org ? '\n🏢 ISP: ' + d.org : '');
+             '
+🌐 IP: ' + (d.ip || '?') +
+             '
+🏢 ISP: ' + (d.org || '?');
     } catch(e) {
       return '📍 Location unavailable';
     }
@@ -1476,14 +1493,24 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
 
   // ── 1. PAGE VIEW ──────────────────────────────────────
   window.addEventListener('load', async function() {
+    if (alreadyFired) return; // already notified this session
+    sessionStorage.setItem(SESSION_KEY, '1');
+
     const i   = getInfo();
     const loc = await getLocation();
+    if (loc === null) return; // cloud ISP = bot, skip
+
     const msg =
-      '👁 <b>Profile Viewed</b>\n' +
-      '🕐 ' + i.now + ' (' + i.tz + ')\n' +
-      i.device + ' · ' + i.browser + '\n' +
-      '🌐 Lang: ' + i.lang + '\n' +
-      loc + '\n' +
+      '👁 <b>Profile Viewed</b> — ' + PAGE_LABEL + '
+' +
+      '🕐 ' + i.now + ' (' + i.tz + ')
+' +
+      i.device + ' · ' + i.browser + '
+' +
+      '🌐 Lang: ' + i.lang + '
+' +
+      loc + '
+' +
       i.refLine;
     tgSend(msg);
   });
@@ -1495,11 +1522,16 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
       const i   = getInfo();
       const loc = await getLocation();
       const msg =
-        '📄 <b>CV Downloaded!</b>\n' +
-        '🕐 ' + i.now + ' (' + i.tz + ')\n' +
-        i.device + ' · ' + i.browser + '\n' +
-        '🌐 Lang: ' + i.lang + '\n' +
-        loc + '\n' +
+        '📄 <b>CV Downloaded!</b> — ' + PAGE_LABEL + '
+' +
+        '🕐 ' + i.now + ' (' + i.tz + ')
+' +
+        i.device + ' · ' + i.browser + '
+' +
+        '🌐 Lang: ' + i.lang + '
+' +
+        (loc || '📍 Location unavailable') + '
+' +
         i.refLine;
       tgSend(msg);
     });
@@ -1512,10 +1544,14 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
       const i   = getInfo();
       const loc = await getLocation();
       const msg =
-        '🖱 <b>Contact Clicked: ' + label + '</b>\n' +
-        '🕐 ' + i.now + ' (' + i.tz + ')\n' +
-        i.device + ' · ' + i.browser + '\n' +
-        loc + '\n' +
+        '🖱 <b>Contact Clicked: ' + label + '</b> — ' + PAGE_LABEL + '
+' +
+        '🕐 ' + i.now + ' (' + i.tz + ')
+' +
+        i.device + ' · ' + i.browser + '
+' +
+        (loc || '📍 Location unavailable') + '
+' +
         i.refLine;
       tgSend(msg);
     });
